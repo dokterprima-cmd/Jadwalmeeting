@@ -17,8 +17,10 @@
 
   <style>
     @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fade-in-down { from { opacity: 0; transform: translate(-50%, -20px); } to { opacity: 1; transform: translate(-50%, 0); } }
     @keyframes zoom-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
     .animate-fade-in { animation: fade-in 0.2s ease-out; }
+    .animate-fade-in-down { animation: fade-in-down 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
     .animate-zoom-in { animation: zoom-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
     .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 8px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
@@ -48,12 +50,18 @@
       appId: "1:996236616914:web:353f1d818b34b839c6f90b"
     };
 
-    const isConfigured = myFirebaseConfig.apiKey !== "API_KEY_ANDA";
-    const firebaseConfig = isConfigured ? myFirebaseConfig : {};
+    // Perbaikan: Hanya inisialisasi Firebase JIKA API Key sudah diganti
+    const isConfigured = myFirebaseConfig.apiKey !== "API_KEY_ANDA" && myFirebaseConfig.apiKey.trim() !== "";
+    
+    let app = null;
+    let auth = null;
+    let db = null;
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+    if (isConfigured) {
+      app = initializeApp(myFirebaseConfig);
+      auth = getAuth(app);
+      db = getFirestore(app);
+    }
 
     const CalendarIcon = () => (
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
@@ -73,6 +81,14 @@
 
     const SparklesIcon = () => (
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+    );
+
+    const ListIcon = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+    );
+
+    const CalendarGridIcon = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="8" y2="18"/><line x1="16" y1="14" x2="16" y2="18"/><line x1="3" y1="14" x2="21" y2="14"/></svg>
     );
 
     const INITIAL_TEAMS = [
@@ -149,12 +165,14 @@
           if (isListenersSetup) return;
           isListenersSetup = true;
 
+          if (!isConfigured) {
+            setFirebaseError(true);
+            return;
+          }
+
           const schedulesRef = collection(db, 'schedules');
           unsubSchedules = onSnapshot(schedulesRef, (snapshot) => {
-            const fetchedSchedules = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            }));
+            const fetchedSchedules = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setSchedules(fetchedSchedules);
             localStorage.setItem('localSchedules', JSON.stringify(fetchedSchedules));
             setFirebaseError(false);
@@ -179,21 +197,25 @@
           });
         };
 
-        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-          setUser(currentUser);
-          setupListeners();
-        });
+        if (isConfigured) {
+          const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+            setUser(currentUser);
+            setupListeners();
+          });
 
-        signInAnonymously(auth).catch((err) => {
-          console.warn("Auth anonim gagal, mencoba membaca tanpa auth...", err);
-          setupListeners();
-        });
+          signInAnonymously(auth).catch((err) => {
+            console.warn("Auth anonim gagal, mencoba membaca tanpa auth...", err);
+            setupListeners();
+          });
 
-        return () => {
-          unsubscribeAuth();
-          unsubSchedules();
-          unsubTeams();
-        };
+          return () => {
+            unsubscribeAuth();
+            unsubSchedules();
+            unsubTeams();
+          };
+        } else {
+          setupListeners();
+        }
       }, []);
 
       const handleAdminLogin = (pin) => {
@@ -214,7 +236,7 @@
                   <CalendarIcon />
                   Jadwal Akreditasi RS
                 </h1>
-                <p className="text-teal-200 text-xs md:text-sm mt-1">Portal Penjadwalan Pertemuan Pokja (Real-time)</p>
+                <p className="text-teal-200 text-xs md:text-sm mt-1">Portal Pemantauan Tim Pokja</p>
               </div>
               
               <div>
@@ -251,7 +273,7 @@
           {firebaseError && (
             <div className="bg-rose-500 text-white text-center py-2 px-4 text-xs md:text-sm font-medium flex items-center justify-center gap-2 shadow-inner">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-              Database Firebase Diblokir! Silakan atur "Rules" di Firebase Console. Aplikasi beralih ke Mode Penyimpanan Lokal.
+              Mode Lokal Aktif. Database Firebase belum terhubung atau diblokir.
             </div>
           )}
 
@@ -265,7 +287,7 @@
 
           <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
             {currentView === 'staff' && (
-              <StaffView schedules={schedules} />
+              <StaffView schedules={schedules} teams={teams} />
             )}
             {currentView === 'admin' && !isAdminAuth && (
               <LoginView onLogin={handleAdminLogin} onCancel={() => setCurrentView('staff')} />
@@ -275,6 +297,7 @@
                 teams={teams} setTeams={setTeams}
                 schedules={schedules} setSchedules={setSchedules}
                 showNotification={showNotification}
+                isConfigured={isConfigured} db={db}
               />
             )}
           </main>
@@ -282,24 +305,36 @@
       );
     }
 
-    function StaffView({ schedules }) {
+    function StaffView({ schedules, teams }) {
+      const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
+      const [filterTeam, setFilterTeam] = useState('ALL');
+
       const todayString = getTodayString();
+      const today = new Date();
+      const [currentMonth, setCurrentMonth] = useState(today.getMonth());
+      const [currentYear, setCurrentYear] = useState(today.getFullYear());
+
+      // Filter schedules based on selected team
+      const filteredSchedules = useMemo(() => {
+        if (filterTeam === 'ALL') return schedules;
+        return schedules.filter(sch => sch.team === filterTeam);
+      }, [schedules, filterTeam]);
 
       const { todaySchedules, upcomingSchedules } = useMemo(() => {
-        const today = [];
-        const upcoming = [];
-        schedules.forEach(sch => {
-          if (sch.date === todayString) today.push(sch);
-          else if (sch.date > todayString) upcoming.push(sch);
+        const todayArr = [];
+        const upcomingArr = [];
+        filteredSchedules.forEach(sch => {
+          if (sch.date === todayString) todayArr.push(sch);
+          else if (sch.date > todayString) upcomingArr.push(sch);
         });
 
-        today.sort((a, b) => a.startTime.localeCompare(b.startTime));
-        upcoming.sort((a, b) => {
+        todayArr.sort((a, b) => a.startTime.localeCompare(b.startTime));
+        upcomingArr.sort((a, b) => {
           if (a.date !== b.date) return a.date.localeCompare(b.date);
           return a.startTime.localeCompare(b.startTime);
         });
-        return { todaySchedules: today, upcomingSchedules: upcoming };
-      }, [schedules, todayString]);
+        return { todaySchedules: todayArr, upcomingSchedules: upcomingArr };
+      }, [filteredSchedules, todayString]);
 
       const groupedUpcoming = useMemo(() => {
         const grouped = {};
@@ -310,8 +345,76 @@
         return grouped;
       }, [upcomingSchedules]);
 
+      // Calendar Logic for Staff View
+      const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+      
+      const generateDays = () => {
+        const days = [];
+        const firstDayDate = new Date(currentYear, currentMonth, 1);
+        const firstDay = firstDayDate.getDay();
+        const startOffset = firstDay === 0 ? 6 : firstDay - 1; 
+
+        const prevMonthLastDate = new Date(currentYear, currentMonth, 0).getDate();
+        for (let i = startOffset - 1; i >= 0; i--) {
+          days.push({ date: new Date(currentYear, currentMonth - 1, prevMonthLastDate - i), isCurrentMonth: false });
+        }
+        
+        const currentMonthLastDate = new Date(currentYear, currentMonth + 1, 0).getDate();
+        for (let i = 1; i <= currentMonthLastDate; i++) {
+          days.push({ date: new Date(currentYear, currentMonth, i), isCurrentMonth: true });
+        }
+
+        const remaining = 42 - days.length;
+        for (let i = 1; i <= remaining; i++) {
+          days.push({ date: new Date(currentYear, currentMonth + 1, i), isCurrentMonth: false });
+        }
+
+        return days.map(d => {
+          const y = d.date.getFullYear();
+          const m = String(d.date.getMonth() + 1).padStart(2, '0');
+          const day = String(d.date.getDate()).padStart(2, '0');
+          return { ...d, dateString: `${y}-${m}-${day}`, dayNum: d.date.getDate() };
+        });
+      };
+
+      const nextMonth = () => { if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1); } else setCurrentMonth(currentMonth + 1); };
+      const prevMonth = () => { if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(currentYear - 1); } else setCurrentMonth(currentMonth - 1); };
+      const calendarDays = generateDays();
+
       return (
-        <div className="space-y-8 md:space-y-12">
+        <div className="space-y-6 md:space-y-8">
+          
+          {/* Controls: Filter & View Toggle */}
+          <div className="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200 w-full md:w-auto">
+              <button 
+                onClick={() => setViewMode('list')} 
+                className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg font-bold text-sm transition-all ${viewMode === 'list' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <ListIcon/> Tampilan Daftar
+              </button>
+              <button 
+                onClick={() => setViewMode('calendar')} 
+                className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg font-bold text-sm transition-all ${viewMode === 'calendar' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <CalendarGridIcon/> Kalender
+              </button>
+            </div>
+            
+            <div className="w-full md:w-64 flex items-center gap-3">
+              <label className="text-sm font-bold text-slate-500 hidden md:block">Filter:</label>
+              <select 
+                value={filterTeam} 
+                onChange={(e) => setFilterTeam(e.target.value)} 
+                className="w-full px-4 py-2.5 rounded-xl border-2 border-slate-200 focus:ring-2 focus:ring-teal-500 outline-none font-bold bg-slate-50 text-slate-700 shadow-sm"
+              >
+                <option value="ALL">Semua Pokja</option>
+                {teams.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Today's Schedule Banner */}
           <section className="bg-gradient-to-br from-teal-700 to-emerald-900 rounded-3xl p-6 md:p-10 text-white shadow-xl relative overflow-hidden">
             <div className="absolute -top-32 -right-32 w-80 h-80 bg-white opacity-10 rounded-full blur-3xl pointer-events-none"></div>
             <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-teal-300 opacity-10 rounded-full blur-2xl pointer-events-none"></div>
@@ -325,7 +428,9 @@
 
               {todaySchedules.length === 0 ? (
                 <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-6 text-center max-w-2xl mx-auto shadow-inner">
-                  <p className="text-lg font-medium text-teal-50">Tidak ada agenda pertemuan akreditasi hari ini.</p>
+                  <p className="text-lg font-medium text-teal-50">
+                    {filterTeam === 'ALL' ? "Tidak ada agenda pertemuan akreditasi hari ini." : `Tidak ada agenda pertemuan untuk tim ${filterTeam} hari ini.`}
+                  </p>
                   <p className="text-teal-200/80 mt-2 text-sm">Selamat bertugas dan berikan pelayanan terbaik!</p>
                 </div>
               ) : (
@@ -353,49 +458,115 @@
             </div>
           </section>
 
-          <section>
-            <h2 className="text-xl md:text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-              <CalendarIcon /> Agenda Pertemuan Mendatang
-            </h2>
-            
-            {Object.keys(groupedUpcoming).length === 0 ? (
-              <div className="bg-white p-8 md:p-10 rounded-3xl shadow-sm border border-slate-200 text-center">
-                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
-                  <CalendarIcon />
-                </div>
-                <p className="text-slate-500 font-medium">Belum ada jadwal pertemuan di hari-hari mendatang.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 md:gap-6">
-                {Object.keys(groupedUpcoming).map(dateStr => (
-                  <div key={dateStr} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow">
-                    <div className="bg-slate-50 py-3.5 px-5 border-b border-slate-200 flex items-center justify-between">
-                      <h3 className="font-bold text-slate-700 capitalize text-sm md:text-base">{formatDateIndo(dateStr)}</h3>
-                    </div>
-                    <div className="p-4 md:p-5 flex-1 bg-white">
-                      <ul className="space-y-3">
-                        {groupedUpcoming[dateStr].map(sch => {
-                          const color = getTeamColor(sch.team);
-                          return (
-                            <li key={sch.id} className={`p-4 ${color.bg} bg-opacity-30 rounded-xl border ${color.border} flex flex-col transition-all hover:bg-opacity-50`}>
-                              <div className="flex items-center gap-2">
-                                <span className={`w-3 h-3 rounded-full ${color.dot}`}></span>
-                                <span className={`font-extrabold ${color.text} text-lg`}>{sch.team}</span>
-                              </div>
-                              <span className="text-sm flex items-center gap-1.5 text-slate-600 mt-2 font-semibold ml-5">
-                                <ClockIcon />
-                                {sch.startTime} - {sch.endTime} WIB
-                              </span>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
+          {/* Conditional Layout: List vs Calendar */}
+          {viewMode === 'list' ? (
+            <section>
+              <h2 className="text-xl md:text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <ListIcon /> Agenda Pertemuan Mendatang
+              </h2>
+              
+              {Object.keys(groupedUpcoming).length === 0 ? (
+                <div className="bg-white p-8 md:p-10 rounded-3xl shadow-sm border border-slate-200 text-center">
+                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                    <CalendarIcon />
                   </div>
-                ))}
+                  <p className="text-slate-500 font-medium">Belum ada jadwal pertemuan di hari-hari mendatang.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 md:gap-6">
+                  {Object.keys(groupedUpcoming).map(dateStr => (
+                    <div key={dateStr} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow">
+                      <div className="bg-slate-50 py-3.5 px-5 border-b border-slate-200 flex items-center justify-between">
+                        <h3 className="font-bold text-slate-700 capitalize text-sm md:text-base">{formatDateIndo(dateStr)}</h3>
+                      </div>
+                      <div className="p-4 md:p-5 flex-1 bg-white">
+                        <ul className="space-y-3">
+                          {groupedUpcoming[dateStr].map(sch => {
+                            const color = getTeamColor(sch.team);
+                            return (
+                              <li key={sch.id} className={`p-4 ${color.bg} bg-opacity-30 rounded-xl border ${color.border} flex flex-col transition-all hover:bg-opacity-50`}>
+                                <div className="flex items-center gap-2">
+                                  <span className={`w-3 h-3 rounded-full ${color.dot}`}></span>
+                                  <span className={`font-extrabold ${color.text} text-lg`}>{sch.team}</span>
+                                </div>
+                                <span className="text-sm flex items-center gap-1.5 text-slate-600 mt-2 font-semibold ml-5">
+                                  <ClockIcon />
+                                  {sch.startTime} - {sch.endTime} WIB
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : (
+            <section className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="p-4 lg:p-6 flex items-center justify-between border-b border-slate-100 bg-white">
+                <div className="flex items-center gap-2 lg:gap-4">
+                  <button onClick={prevMonth} className="p-2 rounded-full hover:bg-slate-100 text-slate-600 transition-colors">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  </button>
+                  <h2 className="text-lg lg:text-2xl font-extrabold text-slate-800 w-40 lg:w-56 text-center leading-tight">
+                    {monthNames[currentMonth]} {currentYear}
+                  </h2>
+                  <button onClick={nextMonth} className="p-2 rounded-full hover:bg-slate-100 text-slate-600 transition-colors">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </button>
+                </div>
+                <button 
+                  onClick={() => {setCurrentMonth(today.getMonth()); setCurrentYear(today.getFullYear())}}
+                  className="px-3 py-1.5 lg:px-4 lg:py-2 bg-slate-100 text-slate-700 font-bold rounded-lg hover:bg-slate-200 transition-colors text-xs lg:text-sm"
+                >
+                  Hari Ini
+                </button>
               </div>
-            )}
-          </section>
+
+              <div className="overflow-auto p-4 custom-scrollbar bg-slate-50">
+                <div className="min-w-[700px] grid grid-cols-7 gap-px bg-slate-200 border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                  {['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'].map((d, i) => (
+                    <div key={d} className={`bg-slate-100 py-3 text-center text-sm font-extrabold ${i === 6 ? 'text-rose-500' : 'text-slate-600'}`}>
+                      {d}
+                    </div>
+                  ))}
+                  
+                  {calendarDays.map((dayObj, i) => {
+                    const isToday = dayObj.dateString === getTodayString();
+                    const isSunday = dayObj.date.getDay() === 0;
+                    const daySchedules = filteredSchedules.filter(s => s.date === dayObj.dateString).sort((a,b) => a.startTime.localeCompare(b.startTime));
+
+                    return (
+                      <div 
+                        key={i} 
+                        className={`min-h-[110px] lg:min-h-[130px] p-2 transition-colors relative ${!dayObj.isCurrentMonth ? 'bg-slate-50/50 text-slate-400' : isSunday ? 'bg-rose-50/20' : 'bg-white'} ${isToday ? 'ring-2 ring-inset ring-teal-500 bg-teal-50/10' : ''}`}
+                      >
+                        <div className={`text-right text-xs lg:text-sm font-bold mb-2 ${isToday ? 'text-teal-600' : isSunday ? 'text-rose-400' : 'text-slate-600'}`}>
+                          <span className={isToday ? 'bg-teal-500 text-white w-6 h-6 lg:w-7 lg:h-7 inline-flex items-center justify-center rounded-full shadow-md' : ''}>
+                            {dayObj.dayNum}
+                          </span>
+                        </div>
+                        
+                        <div className="space-y-1.5 pb-2">
+                          {daySchedules.map(sch => {
+                            const color = getTeamColor(sch.team);
+                            return (
+                              <div key={sch.id} className={`text-[10px] lg:text-xs ${color.bg} ${color.text} border ${color.border} rounded-md px-2 py-1.5 shadow-sm`}>
+                                <div className="font-extrabold truncate">{sch.team}</div>
+                                <div className="font-medium opacity-80 mt-0.5">{sch.startTime} - {sch.endTime}</div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </section>
+          )}
         </div>
       );
     }
@@ -436,7 +607,7 @@
       );
     }
 
-    function AdminDashboard({ teams, setTeams, schedules, setSchedules, showNotification }) {
+    function AdminDashboard({ teams, setTeams, schedules, setSchedules, showNotification, isConfigured, db }) {
       const [activeTab, setActiveTab] = useState('schedules');
 
       return (
@@ -458,10 +629,10 @@
 
           <div className="p-0 overflow-y-auto flex-1 flex flex-col bg-slate-50/50">
             {activeTab === 'schedules' ? (
-              <ScheduleManager teams={teams} schedules={schedules} setSchedules={setSchedules} showNotification={showNotification} />
+              <ScheduleManager teams={teams} schedules={schedules} setSchedules={setSchedules} showNotification={showNotification} isConfigured={isConfigured} db={db} />
             ) : (
               <div className="p-5 md:p-8">
-                <TeamManager teams={teams} setTeams={setTeams} schedules={schedules} showNotification={showNotification} />
+                <TeamManager teams={teams} setTeams={setTeams} schedules={schedules} showNotification={showNotification} isConfigured={isConfigured} db={db} />
               </div>
             )}
           </div>
@@ -469,11 +640,13 @@
       );
     }
 
-    function ScheduleManager({ teams, schedules, setSchedules, showNotification }) {
+    function ScheduleManager({ teams, schedules, setSchedules, showNotification, isConfigured, db }) {
       const today = new Date();
       const [currentMonth, setCurrentMonth] = useState(today.getMonth());
       const [currentYear, setCurrentYear] = useState(today.getFullYear());
       
+      const [filterTeam, setFilterTeam] = useState('ALL');
+
       const [modalOpen, setModalOpen] = useState(false);
       const [scheduleToDelete, setScheduleToDelete] = useState(null);
       const [draftSchedule, setDraftSchedule] = useState({
@@ -548,21 +721,28 @@
 
         const newSchedule = { ...draftSchedule, createdAt: new Date().toISOString() };
 
-        try {
-          const ref = collection(db, 'schedules');
-          await addDoc(ref, newSchedule);
-          showNotification("Jadwal tersimpan!");
-        } catch (err) {
-          console.warn("Menyimpan ke LocalStorage:", err.message);
-          const localSch = { id: Date.now().toString(), ...newSchedule };
-          setSchedules(prev => {
-            const updated = [...prev, localSch];
-            localStorage.setItem('localSchedules', JSON.stringify(updated));
-            return updated;
-          });
-          showNotification("Tersimpan di Mode Lokal (Firebase ditolak)", "error");
+        if (isConfigured) {
+          try {
+            const ref = collection(db, 'schedules');
+            await addDoc(ref, newSchedule);
+            showNotification("Jadwal tersimpan di Cloud!");
+          } catch (err) {
+            saveToLocalStorage(newSchedule);
+          }
+        } else {
+          saveToLocalStorage(newSchedule);
         }
         setModalOpen(false);
+      };
+
+      const saveToLocalStorage = (newSchedule) => {
+        const localSch = { id: Date.now().toString(), ...newSchedule };
+        setSchedules(prev => {
+          const updated = [...prev, localSch];
+          localStorage.setItem('localSchedules', JSON.stringify(updated));
+          return updated;
+        });
+        showNotification("Tersimpan secara Lokal");
       };
 
       const handleDelete = (e, id) => {
@@ -575,19 +755,26 @@
         const id = scheduleToDelete;
         setScheduleToDelete(null);
 
-        try {
-          const docRef = doc(db, 'schedules', id);
-          await deleteDoc(docRef);
-          showNotification("Jadwal berhasil dihapus");
-        } catch (err) {
-          console.warn("Menghapus dari LocalStorage:", err.message);
-          setSchedules(prev => {
-            const updated = prev.filter(sch => sch.id !== id);
-            localStorage.setItem('localSchedules', JSON.stringify(updated));
-            return updated;
-          });
-          showNotification("Dihapus di Mode Lokal", "success");
+        if (isConfigured) {
+          try {
+            const docRef = doc(db, 'schedules', id);
+            await deleteDoc(docRef);
+            showNotification("Jadwal berhasil dihapus dari Cloud");
+          } catch (err) {
+            deleteFromLocalStorage(id);
+          }
+        } else {
+          deleteFromLocalStorage(id);
         }
+      };
+
+      const deleteFromLocalStorage = (id) => {
+        setSchedules(prev => {
+          const updated = prev.filter(sch => sch.id !== id);
+          localStorage.setItem('localSchedules', JSON.stringify(updated));
+          return updated;
+        });
+        showNotification("Jadwal dihapus (Mode Lokal)");
       };
 
       const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -657,7 +844,8 @@
           </div>
 
           <div className="flex-1 flex flex-col bg-white overflow-hidden">
-            <div className="p-4 lg:p-6 flex items-center justify-between border-b border-slate-100 shrink-0 bg-white">
+            <div className="p-4 lg:p-6 flex flex-col sm:flex-row items-center justify-between border-b border-slate-100 shrink-0 bg-white gap-4">
+              
               <div className="flex items-center gap-2 lg:gap-4">
                 <button onClick={prevMonth} className="p-2 rounded-full hover:bg-slate-100 text-slate-600 transition-colors">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
@@ -669,12 +857,23 @@
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                 </button>
               </div>
-              <button 
-                onClick={() => {setCurrentMonth(today.getMonth()); setCurrentYear(today.getFullYear())}}
-                className="px-3 py-1.5 lg:px-4 lg:py-2 bg-slate-100 text-slate-700 font-bold rounded-lg hover:bg-slate-200 transition-colors text-xs lg:text-sm"
-              >
-                Hari Ini
-              </button>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <select 
+                  value={filterTeam} 
+                  onChange={(e) => setFilterTeam(e.target.value)}
+                  className="flex-1 sm:flex-none px-3 py-2 lg:px-4 rounded-lg border-2 border-slate-200 font-bold text-slate-700 bg-slate-50 outline-none focus:border-teal-500 text-sm"
+                >
+                  <option value="ALL">Semua Pokja</option>
+                  {teams.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <button 
+                  onClick={() => {setCurrentMonth(today.getMonth()); setCurrentYear(today.getFullYear())}}
+                  className="px-3 py-2 lg:px-4 bg-slate-100 text-slate-700 font-bold rounded-lg hover:bg-slate-200 transition-colors text-sm shrink-0"
+                >
+                  Hari Ini
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-auto p-4 custom-scrollbar bg-slate-50 lg:bg-white">
@@ -688,7 +887,8 @@
                 {calendarDays.map((dayObj, i) => {
                   const isToday = dayObj.dateString === getTodayString();
                   const isSunday = dayObj.date.getDay() === 0;
-                  const daySchedules = schedules.filter(s => s.date === dayObj.dateString).sort((a,b) => a.startTime.localeCompare(b.startTime));
+                  // Terapkan filter di dalam sel kalender
+                  const daySchedules = schedules.filter(s => s.date === dayObj.dateString && (filterTeam === 'ALL' || s.team === filterTeam)).sort((a,b) => a.startTime.localeCompare(b.startTime));
 
                   return (
                     <div 
@@ -725,7 +925,7 @@
                               
                               <button 
                                 onClick={(e) => handleDelete(e, sch.id)}
-                                className="absolute right-1 top-1 p-1 lg:p-1.5 bg-white/80 rounded-md text-rose-500 lg:opacity-0 group-hover/item:opacity-100 hover:bg-rose-500 hover:text-white transition-all z-20 shadow-sm border border-transparent hover:border-rose-600"
+                                className="absolute right-1 top-1 p-1 lg:p-1.5 bg-white/80 rounded-md text-rose-500 lg:opacity-0 group-hover/item:opacity-100 hover:bg-rose-500 hover:text-white transition-all z-20 shadow-sm border border-transparent hover:border-rose-600 flex items-center justify-center"
                                 title="Hapus Jadwal"
                               >
                                 <TrashIcon />
@@ -828,7 +1028,7 @@
       );
     }
 
-    function TeamManager({ teams, setTeams, schedules, showNotification }) {
+    function TeamManager({ teams, setTeams, schedules, showNotification, isConfigured, db }) {
       const [newTeam, setNewTeam] = useState('');
       const [teamToDelete, setTeamToDelete] = useState(null);
 
@@ -842,17 +1042,24 @@
         }
 
         const updatedTeams = [...teams, teamName];
-        try {
-          const docRef = doc(db, 'settings', 'teamsList');
-          await setDoc(docRef, { list: updatedTeams });
-          showNotification(`Tim ${teamName} berhasil ditambahkan`);
-        } catch (err) {
-          console.warn("Menyimpan tim ke LocalStorage:", err.message);
-          setTeams(updatedTeams);
-          localStorage.setItem('localTeams', JSON.stringify(updatedTeams));
-          showNotification(`Tim ${teamName} ditambahkan (Mode Lokal)`, "error");
+        if (isConfigured) {
+          try {
+            const docRef = doc(db, 'settings', 'teamsList');
+            await setDoc(docRef, { list: updatedTeams });
+            showNotification(`Tim ${teamName} berhasil ditambahkan ke Cloud`);
+          } catch (err) {
+            saveTeamToLocal(updatedTeams, teamName);
+          }
+        } else {
+          saveTeamToLocal(updatedTeams, teamName);
         }
         setNewTeam('');
+      };
+
+      const saveTeamToLocal = (updatedTeams, teamName) => {
+        setTeams(updatedTeams);
+        localStorage.setItem('localTeams', JSON.stringify(updatedTeams));
+        showNotification(`Tim ${teamName} ditambahkan (Mode Lokal)`);
       };
 
       const handleDeleteTeam = (team) => {
@@ -870,16 +1077,23 @@
         setTeamToDelete(null);
 
         const updatedTeams = teams.filter(t => t !== team);
-        try {
-          const docRef = doc(db, 'settings', 'teamsList');
-          await setDoc(docRef, { list: updatedTeams });
-          showNotification(`Tim ${team} dihapus`);
-        } catch (err) {
-          console.warn("Menghapus tim dari LocalStorage:", err.message);
-          setTeams(updatedTeams);
-          localStorage.setItem('localTeams', JSON.stringify(updatedTeams));
-          showNotification(`Tim ${team} dihapus (Mode Lokal)`, "success");
+        if (isConfigured) {
+          try {
+            const docRef = doc(db, 'settings', 'teamsList');
+            await setDoc(docRef, { list: updatedTeams });
+            showNotification(`Tim ${team} dihapus dari Cloud`);
+          } catch (err) {
+            deleteTeamFromLocal(updatedTeams, team);
+          }
+        } else {
+          deleteTeamFromLocal(updatedTeams, team);
         }
+      };
+
+      const deleteTeamFromLocal = (updatedTeams, team) => {
+        setTeams(updatedTeams);
+        localStorage.setItem('localTeams', JSON.stringify(updatedTeams));
+        showNotification(`Tim ${team} dihapus (Mode Lokal)`);
       };
 
       return (
