@@ -34,7 +34,7 @@
   <script type="text/babel" data-type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     const { useState, useEffect, useMemo } = React;
 
@@ -89,6 +89,14 @@
 
     const CalendarGridIcon = () => (
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="8" y2="18"/><line x1="16" y1="14" x2="16" y2="18"/><line x1="3" y1="14" x2="21" y2="14"/></svg>
+    );
+
+    const PenIcon = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+    );
+
+    const FileTextIcon = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
     );
 
     const INITIAL_TEAMS = [
@@ -219,7 +227,7 @@
       }, []);
 
       const handleAdminLogin = (pin) => {
-        if (pin === '192026') {
+        if (pin === '123456') {
           setIsAdminAuth(true);
           showNotification('Login Admin Berhasil');
         } else {
@@ -287,7 +295,11 @@
 
           <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
             {currentView === 'staff' && (
-              <StaffView schedules={schedules} teams={teams} />
+              <StaffView 
+                schedules={schedules} teams={teams} 
+                db={db} isConfigured={isConfigured} 
+                setSchedules={setSchedules} showNotification={showNotification}
+              />
             )}
             {currentView === 'admin' && !isAdminAuth && (
               <LoginView onLogin={handleAdminLogin} onCancel={() => setCurrentView('staff')} />
@@ -305,14 +317,43 @@
       );
     }
 
-    function StaffView({ schedules, teams }) {
+    function StaffView({ schedules, teams, db, isConfigured, setSchedules, showNotification }) {
       const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
       const [filterTeam, setFilterTeam] = useState('ALL');
+      const [viewNotesSchedule, setViewNotesSchedule] = useState(null);
+      const [writeNotesSchedule, setWriteNotesSchedule] = useState(null);
 
       const todayString = getTodayString();
       const today = new Date();
       const [currentMonth, setCurrentMonth] = useState(today.getMonth());
       const [currentYear, setCurrentYear] = useState(today.getFullYear());
+
+      const saveStaffNotes = async (e) => {
+        e.preventDefault();
+        if (!writeNotesSchedule) return;
+
+        if (isConfigured) {
+          try {
+            const docRef = doc(db, 'schedules', writeNotesSchedule.id);
+            await updateDoc(docRef, { notes: writeNotesSchedule.notes || '' });
+            showNotification("Notulensi berhasil ditambahkan!");
+          } catch (err) {
+            updateLocalNotes(writeNotesSchedule.id, writeNotesSchedule.notes);
+          }
+        } else {
+          updateLocalNotes(writeNotesSchedule.id, writeNotesSchedule.notes);
+        }
+        setWriteNotesSchedule(null);
+      };
+
+      const updateLocalNotes = (id, notes) => {
+        setSchedules(prev => {
+          const updated = prev.map(s => s.id === id ? { ...s, notes: notes || '' } : s);
+          localStorage.setItem('localSchedules', JSON.stringify(updated));
+          return updated;
+        });
+        showNotification("Notulensi disimpan (Mode Lokal)");
+      };
 
       // Filter schedules based on selected team
       const filteredSchedules = useMemo(() => {
@@ -450,6 +491,15 @@
                           <span className={`w-2.5 h-2.5 rounded-full ${color.dot} animate-pulse shadow-[0_0_8px_currentColor]`}></span>
                           Sedang / Akan Berlangsung
                         </p>
+                        {sch.notes ? (
+                          <button onClick={() => setViewNotesSchedule(sch)} className="mt-4 w-full bg-slate-50 hover:bg-teal-50 text-teal-700 border border-slate-200 hover:border-teal-200 rounded-xl py-2 flex items-center justify-center gap-2 transition-colors font-bold text-sm shadow-sm">
+                            <FileTextIcon /> Lihat Notulensi
+                          </button>
+                        ) : (
+                          <button onClick={() => setWriteNotesSchedule(sch)} className="mt-4 w-full bg-slate-50 hover:bg-blue-50 text-blue-700 border border-slate-200 hover:border-blue-200 rounded-xl py-2 flex items-center justify-center gap-2 transition-colors font-bold text-sm shadow-sm">
+                            <PenIcon /> Tulis Notulensi
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -493,6 +543,15 @@
                                   <ClockIcon />
                                   {sch.startTime} - {sch.endTime} WIB
                                 </span>
+                                {sch.notes ? (
+                                  <button onClick={() => setViewNotesSchedule(sch)} className="mt-2 ml-5 text-xs bg-teal-100 text-teal-700 px-3 py-1.5 rounded-xl flex items-center gap-1.5 w-max hover:bg-teal-200 transition-colors font-bold shadow-sm">
+                                    <FileTextIcon /> Lihat Notulensi
+                                  </button>
+                                ) : (
+                                  <button onClick={() => setWriteNotesSchedule(sch)} className="mt-2 ml-5 text-xs bg-blue-100 text-blue-700 px-3 py-1.5 rounded-xl flex items-center gap-1.5 w-max hover:bg-blue-200 transition-colors font-bold shadow-sm">
+                                    <PenIcon /> Tulis Notulensi
+                                  </button>
+                                )}
                               </li>
                             );
                           })}
@@ -556,6 +615,15 @@
                               <div key={sch.id} className={`text-[10px] lg:text-xs ${color.bg} ${color.text} border ${color.border} rounded-md px-2 py-1.5 shadow-sm`}>
                                 <div className="font-extrabold truncate">{sch.team}</div>
                                 <div className="font-medium opacity-80 mt-0.5">{sch.startTime} - {sch.endTime}</div>
+                                {sch.notes ? (
+                                  <button onClick={() => setViewNotesSchedule(sch)} className="mt-1 w-full bg-white/60 hover:bg-white text-teal-800 rounded px-1 py-0.5 flex items-center justify-center gap-1 transition-colors font-bold text-[9px] lg:text-[10px] shadow-sm">
+                                    <FileTextIcon /> Notulen
+                                  </button>
+                                ) : (
+                                  <button onClick={() => setWriteNotesSchedule(sch)} className="mt-1 w-full bg-white/60 hover:bg-white text-blue-800 rounded px-1 py-0.5 flex items-center justify-center gap-1 transition-colors font-bold text-[9px] lg:text-[10px] shadow-sm">
+                                    <PenIcon /> Tulis
+                                  </button>
+                                )}
                               </div>
                             )
                           })}
@@ -566,6 +634,68 @@
                 </div>
               </div>
             </section>
+          )}
+
+          {/* Modal Pop-up Lihat Notulensi (Staf) */}
+          {viewNotesSchedule && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden transform scale-100 animate-zoom-in flex flex-col max-h-[85vh]">
+                <div className={`p-5 lg:p-6 border-b shrink-0 ${getTeamColor(viewNotesSchedule.team).bg} ${getTeamColor(viewNotesSchedule.team).text}`}>
+                  <h3 className="font-bold text-lg lg:text-xl flex items-center gap-2">
+                    <FileTextIcon /> Notulensi Pertemuan Pokja {viewNotesSchedule.team}
+                  </h3>
+                  <p className="text-sm opacity-80 mt-1 font-medium">{formatDateIndo(viewNotesSchedule.date)} | {viewNotesSchedule.startTime} - {viewNotesSchedule.endTime} WIB</p>
+                </div>
+                <div className="p-5 lg:p-8 bg-slate-50 flex-1 overflow-y-auto custom-scrollbar whitespace-pre-wrap text-sm lg:text-base text-slate-700 leading-relaxed">
+                  {viewNotesSchedule.notes}
+                </div>
+                <div className="p-4 lg:p-5 border-t border-slate-100 bg-white shrink-0">
+                  <button onClick={() => setViewNotesSchedule(null)} className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors">
+                    Tutup
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Pop-up Tulis Notulensi (Staf) */}
+          {writeNotesSchedule && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden transform scale-100 animate-zoom-in flex flex-col max-h-[90vh]">
+                <div className={`p-5 lg:p-6 border-b shrink-0 ${getTeamColor(writeNotesSchedule.team).bg} ${getTeamColor(writeNotesSchedule.team).text}`}>
+                  <h3 className="font-bold text-lg lg:text-xl flex items-center gap-2">
+                    <PenIcon /> Tulis Notulensi Pokja {writeNotesSchedule.team}
+                  </h3>
+                  <p className="text-sm opacity-80 mt-1 font-medium">{formatDateIndo(writeNotesSchedule.date)} | {writeNotesSchedule.startTime} - {writeNotesSchedule.endTime} WIB</p>
+                </div>
+                
+                <form onSubmit={saveStaffNotes} className="flex-1 flex flex-col overflow-hidden">
+                  <div className="p-5 lg:p-6 flex-1 overflow-y-auto">
+                    <div className="bg-blue-50 border border-blue-200 text-blue-800 text-xs lg:text-sm p-3 lg:p-4 rounded-xl mb-4 flex items-start gap-3">
+                       <span className="text-lg lg:text-xl shrink-0">⚠️</span>
+                       <p className="leading-relaxed">Notulensi hanya dapat diisi satu kali melalui halaman ini. <b>Setelah disimpan, notulensi ini akan dikunci (Hanya-Baca)</b> dan hanya dapat diubah oleh Admin.</p>
+                    </div>
+                    <label className="block text-sm font-bold text-slate-700 mb-3">Catatan / Kesimpulan Rapat:</label>
+                    <textarea 
+                      required
+                      value={writeNotesSchedule.notes || ''} 
+                      onChange={(e) => setWriteNotesSchedule({...writeNotesSchedule, notes: e.target.value})}
+                      placeholder="Tuliskan hasil rapat, keputusan, atau tugas tindak lanjut di sini..."
+                      className="w-full h-48 lg:h-64 p-4 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-slate-700 bg-slate-50 resize-none custom-scrollbar leading-relaxed"
+                    ></textarea>
+                  </div>
+
+                  <div className="flex gap-3 p-5 lg:p-6 border-t border-slate-100 shrink-0 bg-white">
+                    <button type="button" onClick={() => setWriteNotesSchedule(null)} className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors">
+                      Batal
+                    </button>
+                    <button type="submit" className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-600/30 transition-all">
+                      Simpan Permanen
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
           )}
         </div>
       );
@@ -649,6 +779,7 @@
 
       const [modalOpen, setModalOpen] = useState(false);
       const [scheduleToDelete, setScheduleToDelete] = useState(null);
+      const [activeNotesSchedule, setActiveNotesSchedule] = useState(null);
       const [draftSchedule, setDraftSchedule] = useState({
         team: '', date: '', startTime: '08:00', endTime: '09:00'
       });
@@ -775,6 +906,38 @@
           return updated;
         });
         showNotification("Jadwal dihapus (Mode Lokal)");
+      };
+
+      const handleOpenNotes = (e, sch) => {
+        e.stopPropagation();
+        setActiveNotesSchedule(sch);
+      };
+
+      const saveNotes = async (e) => {
+        e.preventDefault();
+        if (!activeNotesSchedule) return;
+
+        if (isConfigured) {
+          try {
+            const docRef = doc(db, 'schedules', activeNotesSchedule.id);
+            await updateDoc(docRef, { notes: activeNotesSchedule.notes || '' });
+            showNotification("Notulensi berhasil disimpan di Cloud!");
+          } catch (err) {
+            updateLocalNotes(activeNotesSchedule.id, activeNotesSchedule.notes);
+          }
+        } else {
+          updateLocalNotes(activeNotesSchedule.id, activeNotesSchedule.notes);
+        }
+        setActiveNotesSchedule(null);
+      };
+
+      const updateLocalNotes = (id, notes) => {
+        setSchedules(prev => {
+          const updated = prev.map(s => s.id === id ? { ...s, notes: notes || '' } : s);
+          localStorage.setItem('localSchedules', JSON.stringify(updated));
+          return updated;
+        });
+        showNotification("Notulensi disimpan (Mode Lokal)");
       };
 
       const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -930,6 +1093,14 @@
                               >
                                 <TrashIcon />
                               </button>
+
+                              <button 
+                                onClick={(e) => handleOpenNotes(e, sch)}
+                                className={`absolute right-7 lg:right-8 top-1 p-1 lg:p-1.5 bg-white/80 rounded-md text-teal-600 lg:opacity-0 group-hover/item:opacity-100 hover:bg-teal-600 hover:text-white transition-all z-20 shadow-sm border border-transparent hover:border-teal-600 flex items-center justify-center ${sch.notes ? 'opacity-100 ring-1 ring-teal-500' : ''}`}
+                                title={sch.notes ? "Edit Notulensi" : "Tambah Notulensi"}
+                              >
+                                <PenIcon />
+                              </button>
                             </div>
                           )
                         })}
@@ -1024,142 +1195,38 @@
               </div>
             </div>
           )}
-        </div>
-      );
-    }
 
-    function TeamManager({ teams, setTeams, schedules, showNotification, isConfigured, db }) {
-      const [newTeam, setNewTeam] = useState('');
-      const [teamToDelete, setTeamToDelete] = useState(null);
-
-      const handleAddTeam = async (e) => {
-        e.preventDefault();
-        const teamName = newTeam.trim().toUpperCase();
-        if (!teamName) return;
-        
-        if (teams.includes(teamName)) {
-          showNotification("Tim sudah ada dalam daftar", "error"); return;
-        }
-
-        const updatedTeams = [...teams, teamName];
-        if (isConfigured) {
-          try {
-            const docRef = doc(db, 'settings', 'teamsList');
-            await setDoc(docRef, { list: updatedTeams });
-            showNotification(`Tim ${teamName} berhasil ditambahkan ke Cloud`);
-          } catch (err) {
-            saveTeamToLocal(updatedTeams, teamName);
-          }
-        } else {
-          saveTeamToLocal(updatedTeams, teamName);
-        }
-        setNewTeam('');
-      };
-
-      const saveTeamToLocal = (updatedTeams, teamName) => {
-        setTeams(updatedTeams);
-        localStorage.setItem('localTeams', JSON.stringify(updatedTeams));
-        showNotification(`Tim ${teamName} ditambahkan (Mode Lokal)`);
-      };
-
-      const handleDeleteTeam = (team) => {
-        const hasSchedule = schedules.some(sch => sch.team === team);
-        if (hasSchedule) {
-          showNotification(`Tidak bisa menghapus tim ${team} karena masih ada jadwal aktif. Hapus jadwalnya terlebih dahulu di kalender.`, "error");
-          return;
-        }
-        setTeamToDelete(team);
-      };
-
-      const executeDeleteTeam = async () => {
-        if (!teamToDelete) return;
-        const team = teamToDelete;
-        setTeamToDelete(null);
-
-        const updatedTeams = teams.filter(t => t !== team);
-        if (isConfigured) {
-          try {
-            const docRef = doc(db, 'settings', 'teamsList');
-            await setDoc(docRef, { list: updatedTeams });
-            showNotification(`Tim ${team} dihapus dari Cloud`);
-          } catch (err) {
-            deleteTeamFromLocal(updatedTeams, team);
-          }
-        } else {
-          deleteTeamFromLocal(updatedTeams, team);
-        }
-      };
-
-      const deleteTeamFromLocal = (updatedTeams, team) => {
-        setTeams(updatedTeams);
-        localStorage.setItem('localTeams', JSON.stringify(updatedTeams));
-        showNotification(`Tim ${team} dihapus (Mode Lokal)`);
-      };
-
-      return (
-        <div className="bg-white p-5 lg:p-8 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex flex-col lg:flex-row gap-6 mb-8 lg:mb-10 items-start">
-            <div className="flex-1">
-              <h3 className="font-bold text-lg lg:text-xl mb-2 text-slate-800">Daftar Tim Pokja</h3>
-              <p className="text-slate-500 text-sm leading-relaxed max-w-2xl">
-                Kelola daftar tim yang akan diatur jadwalnya. Data ini tersimpan secara permanen. 
-                Anda <strong className="text-rose-500">tidak dapat menghapus</strong> tim yang jadwalnya masih terpasang di kalender.
-              </p>
-            </div>
-            
-            <form onSubmit={handleAddTeam} className="w-full lg:w-96 flex gap-3">
-              <input 
-                type="text" 
-                value={newTeam}
-                onChange={(e) => setNewTeam(e.target.value)}
-                placeholder="Nama Tim Baru..."
-                className="flex-1 px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-teal-500 outline-none transition-all font-bold bg-slate-50 uppercase text-sm lg:text-base"
-              />
-              <button type="submit" className="px-5 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold shadow-md transition-all hover:-translate-y-0.5 text-sm lg:text-base">
-                Tambah
-              </button>
-            </form>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 lg:gap-5">
-            {teams.map(team => {
-              const teamHasSchedule = schedules.some(sch => sch.team === team);
-              const color = getTeamColor(team);
-              return (
-                <div key={team} className={`bg-white border-2 border-slate-100 rounded-xl lg:rounded-2xl p-3 lg:p-4 flex justify-between items-center group hover:border-transparent hover:shadow-lg transition-all ${color.bg} bg-opacity-10 relative overflow-hidden`}>
-                  <div className="flex items-center gap-2 lg:gap-3 relative z-10">
-                    <span className={`w-2.5 h-2.5 lg:w-3 lg:h-3 rounded-full ${color.dot} shadow-sm`}></span>
-                    <span className={`font-extrabold text-sm lg:text-base ${color.text}`}>{team}</span>
+          {/* Modal Pop-up: Tulis/Edit Notulensi */}
+          {activeNotesSchedule && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden transform scale-100 animate-zoom-in flex flex-col max-h-[90vh]">
+                <div className={`p-5 lg:p-6 border-b shrink-0 ${getTeamColor(activeNotesSchedule.team).bg} ${getTeamColor(activeNotesSchedule.team).text}`}>
+                  <h3 className="font-bold text-lg lg:text-xl flex items-center gap-2">
+                    <FileTextIcon /> Notulensi Pokja {activeNotesSchedule.team}
+                  </h3>
+                  <p className="text-sm opacity-80 mt-1 font-medium">{formatDateIndo(activeNotesSchedule.date)} | {activeNotesSchedule.startTime} - {activeNotesSchedule.endTime} WIB</p>
+                </div>
+                
+                <form onSubmit={saveNotes} className="flex-1 flex flex-col overflow-hidden">
+                  <div className="p-5 lg:p-6 flex-1 overflow-y-auto">
+                    <label className="block text-sm font-bold text-slate-700 mb-3">Catatan / Kesimpulan Rapat:</label>
+                    <textarea 
+                      value={activeNotesSchedule.notes || ''} 
+                      onChange={(e) => setActiveNotesSchedule({...activeNotesSchedule, notes: e.target.value})}
+                      placeholder="Tuliskan hasil rapat, keputusan, atau tugas tindak lanjut di sini..."
+                      className="w-full h-64 lg:h-80 p-4 rounded-xl border border-slate-300 focus:ring-2 focus:ring-teal-500 outline-none transition-all text-slate-700 bg-slate-50 resize-none custom-scrollbar leading-relaxed"
+                    ></textarea>
                   </div>
-                  <button 
-                    onClick={() => handleDeleteTeam(team)}
-                    className={`p-1.5 lg:p-2 rounded-lg transition-all relative z-10 ${teamHasSchedule ? 'text-slate-300 bg-slate-50 cursor-not-allowed' : 'text-slate-400 hover:text-white hover:bg-rose-500'}`}
-                    title={teamHasSchedule ? "Hapus jadwal tim ini di kalender terlebih dahulu" : "Hapus tim"}
-                    disabled={teamHasSchedule}
-                  >
-                    <TrashIcon />
-                  </button>
-                </div>
-              )
-            })}
-          </div>
 
-          {teamToDelete && (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden p-6 text-center transform scale-100 animate-zoom-in">
-                <div className="w-16 h-16 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
-                   <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                </div>
-                <h3 className="font-bold text-xl text-slate-800 mb-2">Hapus Pokja {teamToDelete}?</h3>
-                <p className="text-slate-500 text-sm mb-6">Tim akan dihapus secara permanen dari master data. Tindakan ini tidak bisa dibatalkan.</p>
-                <div className="flex gap-3">
-                  <button onClick={() => setTeamToDelete(null)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors">
-                    Batal
-                  </button>
-                  <button onClick={executeDeleteTeam} className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow-lg shadow-rose-600/30 transition-all">
-                    Ya, Hapus
-                  </button>
-                </div>
+                  <div className="flex gap-3 p-5 lg:p-6 border-t border-slate-100 shrink-0 bg-white">
+                    <button type="button" onClick={() => setActiveNotesSchedule(null)} className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors">
+                      Batal
+                    </button>
+                    <button type="submit" className="flex-1 py-3.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold shadow-lg shadow-teal-600/30 transition-all">
+                      Simpan Notulensi
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}
